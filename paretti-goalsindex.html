@@ -7,8 +7,6 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-180.png">
 <link rel="manifest" href="manifest.json">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Paretti">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#0f1115">
@@ -440,7 +438,8 @@ if (/EdgiOS|CriOS|FxiOS|Outlook|FBAN|FBAV|Instagram|GSA\//.test(navigator.userAg
 }
 
 // Pop-up only: the redirect flow breaks in Safari because the app (github.io)
-// and Firebase's auth page (firebaseapp.com) are different sites.
+// and Firebase's auth page (firebaseapp.com) are different sites. The home-screen
+// icon opens in Safari (no standalone mode) because iOS web apps can't open the pop-up.
 let signingIn = false;
 function login() {
   if (signingIn) return;
