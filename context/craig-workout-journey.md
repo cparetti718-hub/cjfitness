@@ -2,8 +2,6 @@
 
 Compiled by Jarvis (Craig's personal assistant) on October 28, 2026, at Craig's request, so Claude can build a workout tracking/analysis tool with full context. Everything below is what has been tracked so far: the plan, its history, sessions, nutrition system, baselines, preferences, and the reasoning behind the decisions. Data gaps are flagged honestly at the end.
 
-> **Status:** Part 1 received Oct 29, 2026. Sections 9–10 (incl. data gaps) not yet received — more coming.
-
 ## 1. Athlete profile
 
 - **Name:** Craig, 24 years old
@@ -184,6 +182,43 @@ Craig reports completions verbally; per-set reps were almost never reported (see
 - **Shake setup (decided Oct 27):** One Smoothie King Hulk + one homemade shake (milk, oats, peanut butter, whey, banana — est. ~1,000 kcal / ~60 g protein). Deliberately NOT two Hulks: a 32 oz Hulk carries ~124 g sugar; two would approach ~300 g/day.
   - Reference: 32 oz Vanilla Hulk ≈ 1,020–1,060 kcal / 34–42 g protein
   - Reference: 44 oz with extra protein ≈ 1,450–1,550 kcal / ~65 g protein
-- **Weigh-in protocol:** morning, post-bathroom (referenced from §1 and §3)
+- **Eat-back rules:** leg day +200–300 kcal; daily add-on layer ~150–250 kcal; Thursday finisher ~100–150 kcal
+- **Weigh-in protocol:** Morning, post-bathroom. Readings: ~145 lb consistently through Oct 23; **146 lb on Oct 28, 2026** (block baseline)
+- **Sample food tallies** (Jarvis estimates from his reports):
 
-<!-- Part 2 (remaining sections incl. §9 and §10 data gaps) to be appended. -->
+| Date | Intake |
+|---|---|
+| Oct 21 | ≈ 3,400 kcal / ~200 g protein |
+| Oct 22 | ≈ 3,850 kcal / ~168 g protein |
+| Oct 26 | Breakfast alone ≈ 2,050 kcal / ~90 g protein |
+| Oct 27 | Lunch (breaded fried chicken cutlet) ≈ 500 kcal / ~50 g protein |
+
+## 9. Hard preferences & constraints (respect these in any tool/plan)
+
+- **No bending-over exercises** — single-arm row is the only exception. Accepted pull-day swaps: upright row, Y-raise, shrug
+- **No Romanian deadlifts, no sliding leg curls** — for now, his call. Glute bridge holds the hamstring slot
+- **Surplus beats extra work** — any added activity must be eaten back; never program a deficit in this phase
+- **One going-out night per weekend** (Fri or Sat) — the other can hold the optional light session; going-out nights are full rest with lighter evening eating
+- **Same muscle never trained hard inside ~48 hours** — muscles grow between sessions
+- **Soreness is not the scorecard** — progression numbers are
+- **Communication style:** Craig is terse and direct. He wants concrete specifics (exercises, sets, reps, numbers), flat honest verdicts, and no lectures
+
+## 10. Data gaps (what the new tool should fix)
+
+- **Per-set reps are almost never captured.** Completions get reported ("done," "fuckin tough") but actual reps per set exist for zero sessions so far. The plan's entire progression system runs on beating last week's reps — **the tool's #1 job is making per-set rep logging take seconds**
+- **Food intake** is tallied from fragmentary reports (a meal here, a shake there), not logged meals. Weekly-average kcal/protein is the metric that matters
+- **Several sessions are "not confirmed"** — completion tracking should be one tap, separate from rep logging
+- **Weight is sporadic** — a simple morning weigh-in log with a weekly trend line vs. the 153–155 lb Jan 5 target would close the loop
+- **Photo/video checkpoints** exist as files (Oct 27 photo, Oct 28 video) with a scheduled retake on Jan 5, 2027 — side-by-side comparison is the payoff view
+
+## 11. What analysis should focus on
+
+- **Adherence:** sessions completed vs. planned (by day type), bike miles, add-on layer usage
+- **Progression:** per-exercise rep trends vs. the plan's top-of-range rule; flag two consecutive stalled main sessions (triggers the add-on cut order in §5)
+- **Intake:** weekly-average calories and protein vs. 3,000–3,500 / ~145 g targets
+- **Weight trend:** weekly average vs. the 145 → 153–155 lb block trajectory
+- **Checkpoint readiness:** everything rolls up to the Jan 5, 2027 verdict — weight + shoulder photo/video comparison
+
+---
+
+*End of transfer. Craig owns this data; Jarvis keeps the live copies of the plan and log and will keep updating them as he reports sessions, food, and weigh-ins.*
