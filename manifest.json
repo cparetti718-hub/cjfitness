@@ -3,7 +3,7 @@
   "short_name": "Paretti",
   "start_url": "paretti-goalsindex.html",
   "scope": "./",
-  "display": "standalone",
+  "display": "browser",
   "background_color": "#0f1115",
   "theme_color": "#0f1115",
   "icons": [
