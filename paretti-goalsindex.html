@@ -439,23 +439,23 @@ if (/EdgiOS|CriOS|FxiOS|Outlook|FBAN|FBAV|Instagram|GSA\//.test(navigator.userAg
   document.getElementById('browserHint').classList.remove('hidden');
 }
 
-auth.getRedirectResult().catch(e => loginMsg(`Sign-in failed: ${e.code || e.message}`));
-
+// Pop-up only: the redirect flow breaks in Safari because the app (github.io)
+// and Firebase's auth page (firebaseapp.com) are different sites.
+let signingIn = false;
 function login() {
+  if (signingIn) return;
+  signingIn = true;
   loginMsg('Opening Google sign-in…');
   const provider = new firebase.auth.GoogleAuthProvider();
   const slow = setTimeout(() => loginMsg('Still waiting on Google. If no sign-in window opened, open this page in Safari and try again.'), 8000);
-  // Home-screen (standalone) mode can block popups; fall back to a redirect
   auth.signInWithPopup(provider).then(() => clearTimeout(slow)).catch(e => {
     clearTimeout(slow);
-    if (['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/cancelled-popup-request'].includes(e.code)) {
-      loginMsg('Pop-up blocked — redirecting to Google…');
-      return auth.signInWithRedirect(provider);
-    }
+    if (e.code === 'auth/cancelled-popup-request') return;
+    if (e.code === 'auth/popup-blocked') return loginMsg('Safari blocked the Google window. Tap the button again — or turn off Settings → Apps → Safari → Block Pop-ups.');
     if (e.code === 'auth/popup-closed-by-user') return loginMsg('Sign-in window closed. Tap the button to try again.');
     if (e.code === 'auth/unauthorized-domain') return loginMsg('This web address isn\'t allowed in Firebase yet: add ' + location.hostname + ' under Authentication → Settings → Authorized domains.');
     loginMsg(`Sign-in failed: ${e.code || e.message}`);
-  });
+  }).finally(() => { signingIn = false; });
 }
 function logout() { auth.signOut(); }
 
