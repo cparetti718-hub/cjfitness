@@ -201,6 +201,7 @@ Craig reports completions verbally; per-set reps were almost never reported (see
 - **One going-out night per weekend** (Fri or Sat) — the other can hold the optional light session; going-out nights are full rest with lighter evening eating
 - **Same muscle never trained hard inside ~48 hours** — muscles grow between sessions
 - **Soreness is not the scorecard** — progression numbers are
+- **No stall flags (Craig, Oct 29, 2026)** — beating last session's reps is his goal, but a session where reps hold or drop is not to be flagged as a stall. The app shows rep changes neutrally and does not trigger the §5 cut order automatically
 - **Communication style:** Craig is terse and direct. He wants concrete specifics (exercises, sets, reps, numbers), flat honest verdicts, and no lectures
 
 ## 10. Data gaps (what the new tool should fix)

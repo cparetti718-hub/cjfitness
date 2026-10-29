@@ -2,11 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Paretti Fitness</title>
-<link rel="apple-touch-icon" href="">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Paretti">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#0f1115">
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -19,11 +24,12 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: #0f1115;
     color: #eee;
-    padding-bottom: 80px;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
   }
   header {
     background: linear-gradient(135deg,#ff6a00,#ee0979);
     padding: 16px 20px;
+    padding-top: calc(16px + env(safe-area-inset-top));
     text-align: center;
   }
   header h1 { font-size: 22px; }
@@ -78,6 +84,7 @@
   nav {
     position:fixed; bottom:0; left:0; right:0; background:#1a1d24;
     display:flex; justify-content:space-around; padding:10px 0;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
     border-top:1px solid #333;
   }
   nav button {
@@ -151,7 +158,6 @@
 
   <!-- DASHBOARD -->
   <div class="tab active" id="tab-dashboard">
-    <div id="stallBanner" class="banner alert hidden"></div>
     <div id="weekBanner" class="banner hidden"></div>
     <div class="card">
       <h2>📅 Today's Session</h2>
@@ -272,7 +278,7 @@
     </div>
     <div class="card">
       <h2>📈 Progression</h2>
-      <div class="muted" style="margin-bottom:6px;">Total reps per session (timed work excluded). Deload weeks skipped for stall checks.</div>
+      <div class="muted" style="margin-bottom:6px;">First number = baseline total reps; after that, change vs the previous session (timed work and deload weeks left out).</div>
       <div id="progressionList"></div>
     </div>
     <div class="card">
@@ -420,7 +426,13 @@ function plannedSets(type, ex, k) {
 // ===== AUTH =====
 function login() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider).catch(e => alert(e.message));
+  // Home-screen (standalone) mode can block popups; fall back to a redirect
+  auth.signInWithPopup(provider).catch(e => {
+    if (['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/cancelled-popup-request'].includes(e.code)) {
+      return auth.signInWithRedirect(provider);
+    }
+    alert(e.message);
+  });
 }
 function logout() { auth.signOut(); }
 
@@ -540,28 +552,23 @@ function compareSessions(cur, prev) {
   return common ? { diff, common } : null;
 }
 
-// Main sessions (push/pull/upper) in order, each compared to the previous
-// non-deload session of the same type.
-function mainSessionHistory() {
+// Lifting sessions in order, each compared to the previous non-deload
+// session of the same type.
+function sessionHistory() {
   const out = [];
   const prevByType = {};
   for (const k of sortedKeys()) {
     if (isDeload(k)) continue;
-    for (const type of ['push','pull','upper']) {
+    for (const type of ['push','legs','pull','upper']) {
       const sess = LOGS[k].sessions?.[type];
       const total = sessionTotal(sess);
       if (total == null) continue;
       const cmp = prevByType[type] ? compareSessions(sess, prevByType[type]) : null;
-      out.push({ key: k, type, total, prev: cmp ? cmp.diff : null, stalled: !!cmp && cmp.diff <= 0 });
+      out.push({ key: k, type, total, diff: cmp ? cmp.diff : null });
       prevByType[type] = sess;
     }
   }
   return out;
-}
-function stallStatus() {
-  const compared = mainSessionHistory().filter(s => s.prev != null);
-  const last2 = compared.slice(-2);
-  return last2.length === 2 && last2.every(s => s.stalled) ? last2 : null;
 }
 
 function isSessionDone(k, type) {
@@ -652,10 +659,6 @@ function renderDashboard() {
   banner.textContent = notes.join(' ');
   banner.classList.toggle('hidden', !notes.length);
 
-  const stall = stallStatus();
-  const sb = document.getElementById('stallBanner');
-  sb.classList.toggle('hidden', !stall);
-  if (stall) sb.innerHTML = `⚠️ Main sessions stalled twice in a row (${stall.map(s => PLAN[s.type].name + ' ' + shortDate(s.key)).join(', ')}). Cut order: 1) Fri/Sat light session → 2) grease-the-groove → 3) Thursday finisher. Vitamins go last.`;
 
   const t = dayTotals(k), tgt = calTarget(k);
   document.getElementById('calEaten').textContent = fmt(t.cal);
@@ -746,7 +749,7 @@ function renderSessionHeader() {
     const cmp = total != null && last ? compareSessions(sess, last.sess) : null;
     if (cmp) {
       const diff = cmp.diff;
-      summary = `Total ${total} reps · <span class="${diff > 0 ? 'good' : diff === 0 ? 'warn' : 'bad'}">${diff > 0 ? '+' : ''}${diff}</span> vs ${shortDate(last.key)} (${cmp.common} matching exercise${cmp.common > 1 ? 's' : ''})`;
+      summary = `Total ${total} reps · <span class="${diff > 0 ? 'good' : ''}">${diff > 0 ? '+' : ''}${diff}</span> vs ${shortDate(last.key)} (${cmp.common} matching exercise${cmp.common > 1 ? 's' : ''})`;
     } else if (total != null) summary = `Total ${total} reps`;
     else if (last) summary = `Beat ${last.total} total reps (${shortDate(last.key)})`;
     else summary = 'First logged session — set the baseline.';
@@ -788,7 +791,7 @@ function exerciseStatus(type, ex, arr, last, sets) {
     if (allTop) status = `<div class="good" style="font-size:12px;margin-top:4px;">✅ Top of range every set — add reps or a set next time</div>`;
     if (last) {
       const diff = sumReps(arr) - sumReps(last.arr);
-      status += `<div class="${diff > 0 ? 'good' : diff === 0 ? 'warn' : 'bad'}" style="font-size:12px;margin-top:2px;">${diff > 0 ? '▲ +' + diff : diff === 0 ? '= same as' : '▼ ' + diff} vs last</div>`;
+      status += `<div class="${diff > 0 ? 'good' : 'muted'}" style="font-size:12px;margin-top:2px;">${diff > 0 ? '▲ +' + diff : diff === 0 ? '= same as' : '▼ ' + diff} vs last</div>`;
     }
   }
   return status;
@@ -1007,21 +1010,18 @@ function renderProgress() {
   document.getElementById('bikeMiles').textContent = `${blockMiles} / ${allMiles} mi`;
   document.getElementById('addonStats').textContent = `${vitDays} · ${gtgSets} · ${lightCount}`;
 
-  // Progression: session totals per type, flag stalls
-  const hist = mainSessionHistory();
-  const legs = sortedKeys().map(k => ({ key: k, type: 'legs', total: sessionTotal(LOGS[k].sessions?.legs) })).filter(s => s.total != null);
-  const html = ['push','pull','upper','legs'].map(type => {
-    const rows = type === 'legs' ? legs : hist.filter(s => s.type === type);
+  // Progression: session totals per type
+  const hist = sessionHistory();
+  const html = ['push','legs','pull','upper'].map(type => {
+    const rows = hist.filter(s => s.type === type);
     if (!rows.length) return `<div class="row"><span>${PLAN[type].icon} ${PLAN[type].name}</span><span class="muted">no reps logged yet</span></div>`;
     // First session = baseline total; after that, rep change vs previous session
-    const chain = rows.slice(-5).map(s => s.prev == null
+    const chain = rows.slice(-5).map(s => s.diff == null
       ? `<span title="${s.key}">${s.total}</span>`
-      : `<span class="${s.stalled ? 'bad' : 'good'}" title="${s.key}">${s.prev > 0 ? '+' : ''}${s.prev}</span>`).join(' → ');
+      : `<span class="${s.diff > 0 ? 'good' : ''}" title="${s.key}">${s.diff > 0 ? '+' : ''}${s.diff}</span>`).join(' → ');
     return `<div class="row"><span>${PLAN[type].icon} ${PLAN[type].name}</span><span>${chain}</span></div>`;
   }).join('');
-  const stall = stallStatus();
-  document.getElementById('progressionList').innerHTML = html +
-    (stall ? `<div class="bad" style="font-size:12px;margin-top:6px;">⚠️ Two straight stalls → cut the Fri/Sat light session first.</div>` : '');
+  document.getElementById('progressionList').innerHTML = html;
 
   // Weekly averages (Mon–Sun)
   const weeks = {};
