@@ -307,6 +307,7 @@
         </div>
       </div>
       <div class="muted" id="museStatus" style="margin-top:6px;"></div>
+      <div class="muted" id="inboxStatus" style="margin-top:4px;"></div>
     </div>
     <div class="card">
       <h2>📥 Import History</h2>
@@ -517,6 +518,7 @@ async function loadAll() {
   snap.forEach(doc => { LOGS[doc.id] = doc.data(); });
   museToken = (userDoc.exists && userDoc.data().museToken) || null;
   scheduleMuseSync(0);
+  pullInbox();
 }
 
 // Deep-merge plain objects; arrays and scalars replace (same as Firestore set+merge)
@@ -1166,6 +1168,15 @@ function buildMuseSummary() {
     PLANNED_TYPES.forEach(x => { if (isSessionDone(k, x)) done[x]++; });
   }
   L.push(PLANNED_TYPES.map(ty => `${PLAN[ty].name} ${done[ty]}/${planned[ty]}`).join(' · '));
+  L.push('');
+  L.push(`## How Muse can log entries (inbox)`);
+  L.push(`POST ${inboxUrl(museToken)}`);
+  L.push(`Body: {"fields":{"entry":{"stringValue":"<JSON string>"}}} — one entry per POST. The app imports it next time it opens (or within a minute if open) and deletes it from the inbox.`);
+  L.push(`Entry JSON (every field optional except date):`);
+  L.push(`{"date":"YYYY-MM-DD","weight":147.4,"meals":[{"name":"Hulk 32oz","cal":1040,"protein":38}],"session":{"type":"pull","done":true,"ex":{"Single-Arm Row":[12,12,11,11]}},"addons":{"vitamins":true,"gtg":4,"out":false}}`);
+  L.push(`- session.type: ${Object.keys(PLAN).join(', ')}. Bike uses "miles" and "minutes" instead of "ex".`);
+  L.push(`- ex names must match the plan exactly: ${Object.entries(PLAN).filter(([, v]) => v.ex.length).map(([k, v]) => `${k}: ${v.ex.map(e => e.n).join(', ')}`).join(' | ')}`);
+  L.push(`- weight replaces that day's weigh-in; meals are added (an identical meal already on that day is skipped); "replaceMeals":true replaces the day's meals instead; session/addons fields overwrite only what's given.`);
   return L.join('\n');
 }
 
@@ -1186,6 +1197,102 @@ async function syncMuse() {
       : `Couldn't update Muse link: ${e.code || e.message}`);
   }
 }
+
+// ===== MUSE INBOX =====
+// Muse POSTs entries to shares/{token}/inbox; rules allow create only for an
+// existing share, and read/delete only for the share's owner.
+let inboxTimer = null;
+function inboxUrl(token) {
+  return `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/shares/${token}/inbox?key=${firebaseConfig.apiKey}`;
+}
+
+function cleanNum(v, max) { const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= max ? n : null; }
+
+// Turns one inbox entry into a day patch, or throws with the reason
+function inboxPatch(e, existing) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date || '') || isNaN(parseKey(e.date))) throw new Error('bad date');
+  const patch = {};
+  if (e.weight != null) {
+    const w = cleanNum(e.weight, 400);
+    if (!w || w < 80) throw new Error('bad weight');
+    patch.weight = w;
+  }
+  if (Array.isArray(e.meals) && e.meals.length) {
+    const add = e.meals.map(m => ({
+      name: String(m.name || 'Meal').slice(0, 80),
+      cal: cleanNum(m.cal, 6000) || 0, protein: cleanNum(m.protein, 400) || 0,
+      fat: cleanNum(m.fat, 400) || 0, carbs: cleanNum(m.carbs, 1000) || 0,
+      time: 'via Muse',
+    }));
+    const cur = e.replaceMeals ? [] : (existing?.meals || []);
+    const fresh = add.filter(m => !cur.some(c => c.name === m.name && Number(c.cal) === m.cal && Number(c.protein) === m.protein));
+    patch.meals = [...cur, ...fresh];
+  }
+  if (e.session) {
+    const type = e.session.type;
+    if (!PLAN[type]) throw new Error('bad session type');
+    const sess = {};
+    if (e.session.done != null) sess.done = !!e.session.done;
+    if (type === 'bike') {
+      if (e.session.miles != null) sess.miles = cleanNum(e.session.miles, 200);
+      if (e.session.minutes != null) sess.minutes = cleanNum(e.session.minutes, 600);
+      if (sess.done == null) sess.done = true;
+    } else if (e.session.ex) {
+      const names = PLAN[type].ex.map(x => x.n);
+      sess.ex = {};
+      for (const [n, arr] of Object.entries(e.session.ex)) {
+        if (!names.includes(n)) throw new Error(`unknown exercise "${n}" for ${type}`);
+        if (!Array.isArray(arr)) throw new Error('reps must be a list');
+        sess.ex[n] = arr.slice(0, 10).map(v => v == null ? null : cleanNum(v, 300));
+      }
+      if (sess.done == null) sess.done = true;
+    }
+    if (e.session.note) sess.note = String(e.session.note).slice(0, 200);
+    patch.sessions = { [type]: sess };
+  }
+  if (e.addons) {
+    const a = {};
+    if (e.addons.vitamins != null) a.vitamins = !!e.addons.vitamins;
+    if (e.addons.gtg != null) a.gtg = cleanNum(e.addons.gtg, 30) || 0;
+    if (e.addons.out != null) a.out = !!e.addons.out;
+    patch.addons = a;
+  }
+  if (!Object.keys(patch).length) throw new Error('nothing to log');
+  return patch;
+}
+
+async function pullInbox() {
+  clearTimeout(inboxTimer);
+  inboxTimer = setTimeout(pullInbox, 60000);
+  if (!museToken) return;
+  let snap;
+  try { snap = await db.collection('shares').doc(museToken).collection('inbox').get(); }
+  catch (e) { return renderInbox(e.code === 'permission-denied' ? 'Inbox blocked — add the inbox rule in Firestore → Rules.' : `Inbox error: ${e.code || e.message}`); }
+  const items = [];
+  snap.forEach(d => items.push({ id: d.id, ref: d.ref, data: d.data() }));
+  if (!items.length) return;
+  items.sort((a, b) => String(a.data.createdAt || a.id).localeCompare(String(b.data.createdAt || b.id)));
+  const done = [], failed = [];
+  for (const it of items) {
+    try {
+      const entry = JSON.parse(it.data.entry);
+      const patch = inboxPatch(entry, LOGS[entry.date]);
+      LOGS[entry.date] = deepMerge(LOGS[entry.date] || {}, patch);
+      await dayRef(entry.date).set(patch, { merge: true });
+      done.push(entry.date);
+    } catch (e) {
+      failed.push(e.message);
+    }
+    await it.ref.delete();
+  }
+  renderAll();
+  scheduleMuseSync(0);
+  renderInbox(`Muse inbox: logged ${done.length} entr${done.length === 1 ? 'y' : 'ies'}${done.length ? ' (' + [...new Set(done)].map(shortDate).join(', ') + ')' : ''}${failed.length ? ` · skipped ${failed.length}: ${failed.join('; ')}` : ''}`);
+}
+
+function renderInbox(t) { document.getElementById('inboxStatus').textContent = t; }
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden && currentUser) pullInbox(); });
 
 function renderMuse(status) {
   document.getElementById('museOff').classList.toggle('hidden', !!museToken);
