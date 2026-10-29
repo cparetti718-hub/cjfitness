@@ -11,7 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 
 <style>
   * { box-sizing: border-box; margin:0; padding:0; }
@@ -23,7 +23,7 @@
   }
   header {
     background: linear-gradient(135deg,#ff6a00,#ee0979);
-    padding: 20px;
+    padding: 16px 20px;
     text-align: center;
   }
   header h1 { font-size: 22px; }
@@ -38,6 +38,9 @@
     border-radius:10px; font-size:16px; cursor:pointer;
   }
   button:active { opacity:0.8; }
+  button.ghost { background:#2a2e38; color:#eee; }
+  button.small { padding:6px 10px; font-size:13px; border-radius:8px; }
+  button.done { background:#2e7d32; }
 
   .card {
     background:#1a1d24; margin:14px; padding:16px; border-radius:14px;
@@ -50,8 +53,14 @@
   }
   .progressFill { height:100%; background:#4caf50; transition:width 0.3s; }
   .progressFill.over { background:#e53935; }
+  .progressFill.low { background:#f9a825; }
 
-  .row { display:flex; justify-content:space-between; font-size:13px; margin:4px 0; }
+  .row { display:flex; justify-content:space-between; font-size:13px; margin:4px 0; gap:8px; }
+  .muted { opacity:0.6; font-size:12px; }
+  .good { color:#66bb6a; }
+  .warn { color:#fbc02d; }
+  .bad { color:#ef5350; }
+  .big { font-size:24px; font-weight:700; }
 
   input, select {
     width:100%; padding:10px; margin:6px 0; border-radius:8px; border:1px solid #333;
@@ -72,7 +81,7 @@
     border-top:1px solid #333;
   }
   nav button {
-    background:none; color:#888; font-size:12px; flex-direction:column; display:flex; align-items:center; gap:2px;
+    background:none; color:#888; font-size:12px; flex-direction:column; display:flex; align-items:center; gap:2px; padding:4px 8px;
   }
   nav button.active { color:#ff8a3d; }
 
@@ -82,8 +91,39 @@
   .suggestBox {
     background:#2a2e38; padding:10px; border-radius:8px; font-size:13px; margin-bottom:10px;
   }
-  .hidden { display:none; }
+  .hidden { display:none !important; }
   #userBar { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; font-size:12px; opacity:0.8; }
+
+  #dateBar { display:flex; justify-content:space-between; align-items:center; padding:0 14px; }
+  #dateBar button { background:#2a2e38; padding:8px 14px; font-size:16px; }
+  #dateBar span { font-weight:600; font-size:15px; }
+
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:0 14px; }
+  .chip { background:#23262e; color:#bbb; padding:7px 11px; font-size:13px; border-radius:16px; }
+  .chip.active { background:#ff6a00; color:#fff; }
+  .chip.isDone::after { content:" ✓"; }
+
+  .exName { font-weight:600; font-size:15px; }
+  .reps { display:flex; gap:6px; margin-top:6px; }
+  .reps input { text-align:center; font-size:18px; padding:10px 4px; margin:0; }
+  .cue { font-size:11px; opacity:0.55; margin-top:3px; }
+  .banner { margin:14px; padding:10px 12px; border-radius:10px; font-size:13px; background:#3a2a10; color:#ffcc80; }
+  .banner.alert { background:#3b1414; color:#ff8a80; }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:5px 4px; border-bottom:1px solid #2a2e38; }
+  th { opacity:0.6; font-weight:500; font-size:12px; }
+  td.num, th.num { text-align:right; font-variant-numeric: tabular-nums; }
+
+  .quickRow { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .counter { display:flex; align-items:center; gap:10px; }
+  .counter span { min-width:24px; text-align:center; font-size:18px; font-weight:700; }
+  .toggleRow { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #2a2e38; font-size:14px; }
+  .toggleRow:last-child { border-bottom:none; }
+
+  .photoGrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .photoGrid img { width:100%; border-radius:8px; background:#23262e; min-height:80px; object-fit:cover; }
+  .photoGrid input { font-size:11px; padding:6px; }
 </style>
 </head>
 <body>
@@ -97,105 +137,160 @@
 <div id="app" class="hidden">
   <header>
     <h1>💪 Paretti Fitness</h1>
-    <p id="todayDate"></p>
+    <p id="blockLine"></p>
   </header>
   <div id="userBar">
     <span id="userName"></span>
     <button onclick="logout()" style="background:none;color:#ff6a00;font-size:12px;padding:0;">Sign out</button>
   </div>
+  <div id="dateBar">
+    <button onclick="shiftDate(-1)">◀</button>
+    <span id="dateLabel"></span>
+    <button onclick="shiftDate(1)">▶</button>
+  </div>
 
   <!-- DASHBOARD -->
   <div class="tab active" id="tab-dashboard">
+    <div id="stallBanner" class="banner alert hidden"></div>
+    <div id="weekBanner" class="banner hidden"></div>
     <div class="card">
-      <h2>🔥 Calories Today</h2>
-      <div class="row"><span id="calEaten">0</span><span>Goal: 3500</span></div>
-      <div class="progressBar"><div class="progressFill" id="calBar" style="width:0%"></div></div>
-    </div>
-    <div class="card">
-      <h2>🍗 Macros Today</h2>
-      <div class="row"><span>Protein</span><span id="pTxt">0 / 160g</span></div>
-      <div class="progressBar"><div class="progressFill" id="pBar" style="width:0%"></div></div>
-      <div class="row"><span>Fat</span><span id="fTxt">0 / 100g</span></div>
-      <div class="progressBar"><div class="progressFill" id="fBar" style="width:0%"></div></div>
-      <div class="row"><span>Carbs</span><span id="cTxt">0 / 490g</span></div>
-      <div class="progressBar"><div class="progressFill" id="cBar" style="width:0%"></div></div>
-    </div>
-    <div class="card">
-      <h2>📅 Today's Suggested Workout</h2>
+      <h2>📅 Today's Session</h2>
       <div class="suggestBox" id="suggestedWorkout">Loading...</div>
+      <button onclick="switchTab('workouts')" style="width:100%;">Log it</button>
     </div>
     <div class="card">
-      <h2>⚖️ Current Weight</h2>
-      <div class="row"><span id="currentWeightTxt">-- lbs</span><span>Goal: 165 lbs</span></div>
+      <h2>🔥 Calories</h2>
+      <div class="row"><span><span id="calEaten" class="big">0</span> today</span><span id="calTarget"></span></div>
+      <div class="progressBar"><div class="progressFill" id="calBar" style="width:0%"></div></div>
+      <div class="row"><span>7-day avg</span><span id="calAvg">--</span></div>
+    </div>
+    <div class="card">
+      <h2>🍗 Protein</h2>
+      <div class="row"><span><span id="pEaten" class="big">0</span> g today</span><span>Goal: 145 g</span></div>
+      <div class="progressBar"><div class="progressFill" id="pBar" style="width:0%"></div></div>
+      <div class="row"><span>7-day avg</span><span id="pAvg">--</span></div>
+    </div>
+    <div class="card">
+      <h2>⚖️ Weight</h2>
+      <div class="row"><span>Latest</span><span id="currentWeightTxt">-- lbs</span></div>
+      <div class="row"><span>7-day avg</span><span id="weightAvgTxt">--</span></div>
+      <div class="row"><span>Jan 5 target</span><span>153–155 lbs</span></div>
+      <div class="row"><span>Pace needed</span><span id="paceTxt">--</span></div>
+    </div>
+  </div>
+
+  <!-- WORKOUTS -->
+  <div class="tab" id="tab-workouts">
+    <div style="height:10px"></div>
+    <div class="chips" id="sessionChips"></div>
+    <div id="sessionBanner" class="banner hidden"></div>
+    <div class="card">
+      <div class="row" style="align-items:center;">
+        <h2 id="sessionTitle" style="margin:0;"></h2>
+        <button id="doneBtn" class="small ghost" onclick="toggleDone()">Mark done</button>
+      </div>
+      <div class="muted" id="sessionSummary"></div>
+    </div>
+    <div id="exerciseList"></div>
+    <div id="bikeCard" class="card hidden">
+      <h2>🚴 Ride</h2>
+      <label>Distance (miles)</label>
+      <input id="bikeDistance" type="number" inputmode="decimal" placeholder="6" onchange="saveBike()">
+      <label>Time (minutes)</label>
+      <input id="bikeTime" type="number" inputmode="numeric" placeholder="30" onchange="saveBike()">
+      <div class="muted">Thursday is the only bike day. Finisher is optional — tap “Finisher” above.</div>
+    </div>
+    <div class="card">
+      <h2>➕ Daily Add-Ons</h2>
+      <div class="toggleRow"><span>Vitamins (core / calves / grip)</span><button id="vitBtn" class="small ghost" onclick="toggleAddon('vitamins')">Not yet</button></div>
+      <div class="toggleRow"><span>Grease-the-groove push-up sets<div class="muted" id="gtgNote"></div></span>
+        <div class="counter"><button class="small ghost" onclick="bumpGtg(-1)">−</button><span id="gtgCount">0</span><button class="small ghost" onclick="bumpGtg(1)">+</button></div></div>
+      <div class="toggleRow" id="outRow"><span>Going-out night</span><button id="outBtn" class="small ghost" onclick="toggleAddon('out')">No</button></div>
+      <div class="muted" style="margin-top:6px;">Any add-on work = eat back ~150–250 kcal.</div>
+    </div>
+    <div class="card hidden" id="legacyCard">
+      <h2>📋 Older Entries</h2>
+      <div class="entryList" id="workoutList"></div>
     </div>
   </div>
 
   <!-- MEALS -->
   <div class="tab" id="tab-meals">
     <div class="card">
+      <h2>⚡ Quick Add</h2>
+      <div class="quickRow" id="quickRow"></div>
+    </div>
+    <div class="card">
       <h2>🍽️ Log a Meal</h2>
       <label>Food name</label>
-      <input id="mealName" placeholder="e.g. Chicken breast + rice">
-      <label>Calories</label>
-      <input id="mealCal" type="number" placeholder="0">
-      <label>Protein (g)</label>
-      <input id="mealProtein" type="number" placeholder="0">
-      <label>Fat (g)</label>
-      <input id="mealFat" type="number" placeholder="0">
-      <label>Carbs (g)</label>
-      <input id="mealCarb" type="number" placeholder="0">
+      <input id="mealName" placeholder="e.g. Chicken cutlet + rice">
+      <div class="row">
+        <div style="flex:1"><label>Calories</label><input id="mealCal" type="number" inputmode="numeric" placeholder="0"></div>
+        <div style="flex:1"><label>Protein (g)</label><input id="mealProtein" type="number" inputmode="numeric" placeholder="0"></div>
+      </div>
+      <div class="row">
+        <div style="flex:1"><label>Fat (g, optional)</label><input id="mealFat" type="number" inputmode="numeric" placeholder="0"></div>
+        <div style="flex:1"><label>Carbs (g, optional)</label><input id="mealCarb" type="number" inputmode="numeric" placeholder="0"></div>
+      </div>
       <button onclick="addMeal()" style="width:100%;margin-top:10px;">+ Add Meal</button>
     </div>
     <div class="card">
-      <h2>📋 Today's Meals</h2>
+      <h2>📋 Meals</h2>
+      <div class="row"><span id="mealTotals"></span><span id="mealTarget" class="muted"></span></div>
       <div class="entryList" id="mealList"></div>
-    </div>
-  </div>
-
-  <!-- WORKOUTS -->
-  <div class="tab" id="tab-workouts">
-    <div class="card">
-      <h2>🏋️ Log a Workout</h2>
-      <label>Type</label>
-      <select id="workoutType" onchange="toggleWorkoutFields()">
-        <option value="push">Push</option>
-        <option value="pull">Pull</option>
-        <option value="push/pull">Push/Pull Combo</option>
-        <option value="bike">Bike</option>
-        <option value="other">Other</option>
-      </select>
-
-      <div id="liftFields">
-        <label>Notes (exercises, sets/reps, etc.)</label>
-        <input id="workoutNotes" placeholder="e.g. Bench 3x8, OHP 3x10">
-      </div>
-
-      <div id="bikeFields" class="hidden">
-        <label>Distance (miles)</label>
-        <input id="bikeDistance" type="number" placeholder="5">
-        <label>Time (minutes)</label>
-        <input id="bikeTime" type="number" placeholder="30">
-      </div>
-
-      <button onclick="addWorkout()" style="width:100%;margin-top:10px;">+ Add Workout</button>
-    </div>
-    <div class="card">
-      <h2>📋 Today's Workouts</h2>
-      <div class="entryList" id="workoutList"></div>
     </div>
   </div>
 
   <!-- WEIGHT -->
   <div class="tab" id="tab-weight">
     <div class="card">
-      <h2>⚖️ Daily Check-In</h2>
-      <label>Weight today (lbs)</label>
-      <input id="weightInput" type="number" step="0.1" placeholder="144.0">
-      <button onclick="saveWeight()" style="width:100%;margin-top:10px;">Save Weight</button>
+      <h2>⚖️ Morning Weigh-In</h2>
+      <div class="muted">Morning, post-bathroom. Same protocol every time.</div>
+      <input id="weightInput" type="number" inputmode="decimal" step="0.1" placeholder="146.0">
+      <button onclick="saveWeight()" style="width:100%;margin-top:4px;">Save Weight</button>
     </div>
     <div class="card">
       <h2>📊 Weight Trend</h2>
-      <canvas id="weightChart" height="200"></canvas>
+      <canvas id="weightChart" height="220"></canvas>
+      <div class="muted" style="margin-top:6px;">Dots = weigh-ins · orange = 7-day avg · dashed = pace to 154 by Jan 5</div>
+    </div>
+  </div>
+
+  <!-- PROGRESS -->
+  <div class="tab" id="tab-progress">
+    <div class="card">
+      <h2>🎯 Jan 5 Checkpoint</h2>
+      <div class="row"><span>Days left</span><span id="cpDays" class="big"></span></div>
+      <div class="row"><span>Weight (7-day avg)</span><span id="cpWeight"></span></div>
+      <div class="muted" style="margin-top:8px;">Retake on Jan 5: morning weigh-in · shoulder photo · no-pump video (front relaxed, front double bi, side, back relaxed, back double bi). Same bathroom spot, same lighting.</div>
+    </div>
+    <div class="card">
+      <h2>✅ Adherence (block)</h2>
+      <table id="adherenceTable"></table>
+      <div class="row" style="margin-top:8px;"><span>Bike miles (block / all-time)</span><span id="bikeMiles"></span></div>
+      <div class="row"><span>Add-ons: vitamin days · GTG sets · light sessions</span><span id="addonStats"></span></div>
+    </div>
+    <div class="card">
+      <h2>📈 Progression</h2>
+      <div class="muted" style="margin-bottom:6px;">Total reps per session (timed work excluded). Deload weeks skipped for stall checks.</div>
+      <div id="progressionList"></div>
+    </div>
+    <div class="card">
+      <h2>🗓️ Weekly Averages</h2>
+      <table id="weeklyTable"></table>
+    </div>
+    <div class="card">
+      <h2>📸 Side-by-Side</h2>
+      <div class="muted" style="margin-bottom:6px;">Pick baseline + latest from your phone. Nothing uploads.</div>
+      <div class="photoGrid">
+        <div><input type="file" accept="image/*" onchange="showPhoto(this,'photoA')"><img id="photoA" alt=""></div>
+        <div><input type="file" accept="image/*" onchange="showPhoto(this,'photoB')"><img id="photoB" alt=""></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>📥 Import History</h2>
+      <div class="muted" style="margin-bottom:8px;">Loads what Jarvis tracked before this app (weigh-ins, bike rides, confirmed sessions, full-day food totals). Never overwrites anything you've logged.</div>
+      <button class="ghost" onclick="importHistory()" style="width:100%;">Import Jarvis history</button>
     </div>
   </div>
 
@@ -203,9 +298,10 @@
 
 <nav id="navBar" class="hidden">
   <button onclick="switchTab('dashboard')" class="active" id="nav-dashboard">📊<span>Home</span></button>
-  <button onclick="switchTab('meals')" id="nav-meals">🍽️<span>Meals</span></button>
-  <button onclick="switchTab('workouts')" id="nav-workouts">🏋️<span>Workout</span></button>
+  <button onclick="switchTab('workouts')" id="nav-workouts">🏋️<span>Train</span></button>
+  <button onclick="switchTab('meals')" id="nav-meals">🍽️<span>Food</span></button>
   <button onclick="switchTab('weight')" id="nav-weight">⚖️<span>Weight</span></button>
+  <button onclick="switchTab('progress')" id="nav-progress">🎯<span>Progress</span></button>
 </nav>
 
 <script>
@@ -222,43 +318,123 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-const GOALS = { calories: 3500, protein: 160, fat: 100, carbs: 490 };
+// ===== THE PLAN (see context/craig-workout-journey.md) =====
+const GOALS = { calLo: 3000, calHi: 3500, protein: 145 };
+const BLOCK_START = '2026-10-27';
+const CHECKPOINT = '2027-01-05';
+const WEIGHT_START = 145, WEIGHT_TARGET_LO = 153, WEIGHT_TARGET_HI = 155;
+
+// s = sets, lo/hi = rep range, nf = near failure, side = per side, sec = timed, r = rest (s)
+const PLAN = {
+  push: { name:'Push', icon:'💪', main:true, ex:[
+    { n:'DB Floor Press', s:4, lo:10, hi:12, r:90 },
+    { n:'Standing Overhead Press', s:4, lo:10, hi:12, r:90 },
+    { n:'Close-Grip Push-Up', s:3, nf:true, r:90 },
+    { n:'Lateral Raise', s:4, lo:12, hi:15, r:60 },
+    { n:'Overhead Triceps Extension', s:3, lo:10, hi:12, r:60 },
+    { n:'Chair Dips', s:3, nf:true, r:60 },
+  ]},
+  legs: { name:'Legs', icon:'🦵', ex:[
+    { n:'Goblet Squat', s:3, lo:12, hi:15, r:90 },
+    { n:'Bulgarian Split Squat', s:3, lo:10, hi:10, side:true, r:90 },
+    { n:'Reverse Lunge', s:2, lo:10, hi:10, side:true, r:60 },
+    { n:'Glute Bridge', s:3, lo:12, hi:15, r:60 },
+    { n:'Standing Calf Raise', s:3, lo:15, hi:20, r:60 },
+  ]},
+  pull: { name:'Pull', icon:'🔙', main:true, ex:[
+    { n:'Single-Arm Row', s:4, lo:10, hi:12, side:true, r:90 },
+    { n:'Upright Row', s:3, lo:10, hi:12, r:60 },
+    { n:'Y-Raise', s:3, lo:12, hi:15, r:60 },
+    { n:'Bicep Curl', s:3, lo:10, hi:12, r:60 },
+    { n:'Hammer Curl', s:3, lo:10, hi:12, r:60 },
+    { n:'Dumbbell Shrug', s:3, lo:15, hi:20, r:60 },
+    { n:'Lateral Raise', s:3, lo:12, hi:15, r:60 },
+  ]},
+  bike: { name:'Bike', icon:'🚴', ex:[] },
+  upper: { name:'Upper Mix', icon:'🔥', main:true, ex:[
+    { n:'Push-Up', s:3, nf:true, r:90 },
+    { n:'Single-Arm Overhead Press', s:3, lo:8, hi:10, side:true, r:60 },
+    { n:'DB Floor Fly', s:3, lo:12, hi:15, r:60 },
+    { n:'Lateral Raise', s:4, lo:12, hi:15, r:60 },
+    { n:'Triceps Kickback', s:3, lo:12, hi:12, side:true, r:45 },
+    { n:'Plank', s:3, lo:45, hi:60, sec:true, r:45 },
+  ]},
+  finisher: { name:'Finisher', icon:'⚡', ex:[
+    { n:'Bicep Curl', s:2, lo:15, hi:20, r:45 },
+    { n:'Overhead Triceps Extension', s:2, lo:15, hi:20, r:45 },
+  ]},
+  light: { name:'Light', icon:'🌙', ex:[
+    { n:'Lateral Raise', s:2, lo:15, hi:15, r:45 },
+    { n:'Bicep Curl', s:2, lo:15, hi:15, r:45 },
+    { n:'Overhead Triceps Extension', s:2, lo:15, hi:15, r:45 },
+  ]},
+};
+const SCHEDULE = { 0:'upper', 1:'push', 2:'legs', 3:'pull', 4:'bike', 5:'light', 6:'light' };
+const PLANNED_TYPES = ['push','legs','pull','bike','upper'];
+const CUES = {
+  'DB Floor Press':'No arching/heaving — if heaving, slow down',
+  'Standing Overhead Press':'No arching/heaving — if heaving, slow down',
+  'Single-Arm Overhead Press':'No arching/heaving — if heaving, slow down',
+  'Single-Arm Row':'Elbow past the torso, squeeze the shoulder blade',
+  'Upright Row':'Wide grip, chest height only, elbows below shoulders',
+  'Y-Raise':'Thumbs up, arms in a Y, squeeze shoulder blades together',
+  'Dumbbell Shrug':'Straight up to the ears, pause at top, no rolling',
+  'Lateral Raise':'Slight elbow bend, stop at shoulder height, 3-sec lower',
+  'Bicep Curl':'Elbows pinned, no swinging',
+  'Hammer Curl':'Elbows pinned, no swinging',
+  'Glute Bridge':'Dumbbells on hips',
+  'Standing Calf Raise':'Both dumbbells',
+};
+const QUICK_FOODS = [
+  { name:'Hulk 32oz', cal:1040, protein:38 },
+  { name:'Hulk 44oz +protein', cal:1500, protein:65 },
+  { name:'Homemade shake', cal:1000, protein:60 },
+];
+
 let currentUser = null;
 let todayKey = null;
+let selectedKey = null;
+let selectedSession = null;
+let LOGS = {}; // dateKey -> day doc, mirrors users/{uid}/logs
 
-function getTodayKey() {
-  const d = new Date();
+// ===== DATES =====
+function keyOf(d) {
   return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,'0') + "-" + String(d.getDate()).padStart(2,'0');
 }
+function getTodayKey() { return keyOf(new Date()); }
+function parseKey(k) { const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d); }
+function addDays(k, n) { const d = parseKey(k); d.setDate(d.getDate() + n); return keyOf(d); }
+function daysBetween(a, b) { return Math.round((parseKey(b) - parseKey(a)) / 864e5); }
+function blockWeek(k) { const d = daysBetween(BLOCK_START, k); return d < 0 ? 0 : Math.floor(d / 7) + 1; }
+function isDeload(k) { const w = blockWeek(k); return w > 0 && w % 4 === 0; }
+function shortDate(k) { return parseKey(k).toLocaleDateString(undefined, { month:'short', day:'numeric' }); }
+function sortedKeys() { return Object.keys(LOGS).sort(); }
 
-const workoutSchedule = {
-  0: "Rest (optional light activity)",       // Sunday
-  1: "Push Day 💪",                            // Monday
-  2: "Bike — 5 miles 🚴",                      // Tuesday
-  3: "Pull Day 🔙",                            // Wednesday
-  4: "Bike — 5 miles 🚴",                      // Thursday
-  5: "Push/Pull Combo 🔥",                     // Friday
-  6: "Rest (optional light activity)"          // Saturday
-};
+// Planned sets for an exercise on a given date (deload + legs intro weeks)
+function plannedSets(type, ex, k) {
+  if (isDeload(k)) return Math.min(ex.s, 2);
+  if (type === 'legs' && blockWeek(k) <= 2) return Math.min(ex.s, 2);
+  return ex.s;
+}
 
+// ===== AUTH =====
 function login() {
   const provider = new firebase.auth.GoogleAuthProvider();
   auth.signInWithPopup(provider).catch(e => alert(e.message));
 }
 function logout() { auth.signOut(); }
 
-auth.onAuthStateChanged(user => {
+auth.onAuthStateChanged(async user => {
   if (user) {
     currentUser = user;
     todayKey = getTodayKey();
+    selectedKey = todayKey;
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('navBar').classList.remove('hidden');
     document.getElementById('userName').textContent = user.displayName || user.email;
-    document.getElementById('todayDate').textContent = new Date().toDateString();
-    document.getElementById('suggestedWorkout').textContent = workoutSchedule[new Date().getDay()];
-    loadToday();
-    loadWeightHistory();
+    await loadAll();
+    renderAll();
   } else {
     document.getElementById('loginScreen').classList.remove('hidden');
     document.getElementById('app').classList.add('hidden');
@@ -271,97 +447,426 @@ function switchTab(name) {
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'weight') loadWeightHistory();
+  window.scrollTo(0, 0);
 }
 
-function toggleWorkoutFields() {
-  const type = document.getElementById('workoutType').value;
-  document.getElementById('bikeFields').classList.toggle('hidden', type !== 'bike');
-  document.getElementById('liftFields').classList.toggle('hidden', type === 'bike');
+function shiftDate(n) {
+  const next = addDays(selectedKey, n);
+  if (next > todayKey) return;
+  selectedKey = next;
+  selectedSession = null;
+  renderAll();
 }
 
-function dayRef() {
-  return db.collection('users').doc(currentUser.uid).collection('logs').doc(todayKey);
+// ===== DATA =====
+function logsRef() { return db.collection('users').doc(currentUser.uid).collection('logs'); }
+function dayRef(k) { return logsRef().doc(k || selectedKey); }
+function day(k) { return LOGS[k || selectedKey] || {}; }
+
+async function loadAll() {
+  const snap = await logsRef().get();
+  LOGS = {};
+  snap.forEach(doc => { LOGS[doc.id] = doc.data(); });
 }
 
-async function loadToday() {
-  const doc = await dayRef().get();
-  const data = doc.exists ? doc.data() : { meals: [], workouts: [], weight: null };
-  renderMeals(data.meals || []);
-  renderWorkouts(data.workouts || []);
-  updateDashboard(data.meals || []);
-  if (data.weight) {
-    document.getElementById('currentWeightTxt').textContent = data.weight + " lbs";
-    document.getElementById('weightInput').value = data.weight;
+// Deep-merge plain objects; arrays and scalars replace (same as Firestore set+merge)
+function deepMerge(target, patch) {
+  for (const [k, v] of Object.entries(patch)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      if (!target[k] || typeof target[k] !== 'object' || Array.isArray(target[k])) target[k] = {};
+      deepMerge(target[k], v);
+    } else {
+      target[k] = v;
+    }
   }
+  return target;
 }
 
-async function addMeal() {
-  const meal = {
-    name: document.getElementById('mealName').value || "Meal",
-    cal: Number(document.getElementById('mealCal').value) || 0,
-    protein: Number(document.getElementById('mealProtein').value) || 0,
-    fat: Number(document.getElementById('mealFat').value) || 0,
-    carbs: Number(document.getElementById('mealCarb').value) || 0,
-    time: new Date().toLocaleTimeString()
-  };
-  const doc = await dayRef().get();
-  const data = doc.exists ? doc.data() : { meals: [], workouts: [] };
-  data.meals = data.meals || [];
-  data.meals.push(meal);
-  await dayRef().set(data, { merge: true });
-  ['mealName','mealCal','mealProtein','mealFat','mealCarb'].forEach(id => document.getElementById(id).value = '');
-  loadToday();
+async function patchDay(patch, k, quiet) {
+  k = k || selectedKey;
+  LOGS[k] = deepMerge(LOGS[k] || {}, patch);
+  if (!quiet) renderAll();
+  await dayRef(k).set(patch, { merge: true });
 }
 
-async function deleteMeal(index) {
-  const doc = await dayRef().get();
-  const data = doc.data();
-  data.meals.splice(index, 1);
-  await dayRef().set(data, { merge: true });
-  loadToday();
+// ===== SESSION MATH =====
+function exInfo(name) {
+  for (const t in PLAN) for (const e of PLAN[t].ex) if (e.n === name) return e;
+  return null;
 }
+function sumReps(arr) { return (arr || []).reduce((a, v) => a + (Number(v) || 0), 0); }
+function hasReps(arr) { return (arr || []).some(v => v != null && v !== ''); }
 
-function renderMeals(meals) {
-  const list = document.getElementById('mealList');
-  list.innerHTML = '';
-  meals.forEach((m, i) => {
-    const div = document.createElement('div');
-    div.className = 'entryItem';
-    div.innerHTML = `<span>${m.name} — ${m.cal} cal (P:${m.protein} F:${m.fat} C:${m.carbs})</span>
-      <button class="delBtn" onclick="deleteMeal(${i})">✕</button>`;
-    list.appendChild(div);
-  });
-}
-
-async function addWorkout() {
-  const type = document.getElementById('workoutType').value;
-  let workout = { type, time: new Date().toLocaleTimeString() };
-  if (type === 'bike') {
-    workout.distance = Number(document.getElementById('bikeDistance').value) || 0;
-    workout.duration = Number(document.getElementById('bikeTime').value) || 0;
-  } else {
-    workout.notes = document.getElementById('workoutNotes').value || '';
+function sessionTotal(sess) {
+  if (!sess || !sess.ex) return null;
+  let total = 0, any = false;
+  for (const [name, arr] of Object.entries(sess.ex)) {
+    const info = exInfo(name);
+    if (info && info.sec) continue;
+    if (hasReps(arr)) { any = true; total += sumReps(arr); }
   }
-  const doc = await dayRef().get();
-  const data = doc.exists ? doc.data() : { meals: [], workouts: [] };
-  data.workouts = data.workouts || [];
-  data.workouts.push(workout);
-  await dayRef().set(data, { merge: true });
-  document.getElementById('workoutNotes').value = '';
-  document.getElementById('bikeDistance').value = '';
-  document.getElementById('bikeTime').value = '';
-  loadToday();
+  return any ? total : null;
 }
 
+// Most recent earlier entry for this exercise within the same session type
+function lastFor(type, name, beforeKey) {
+  const keys = sortedKeys().filter(k => k < beforeKey).reverse();
+  for (const k of keys) {
+    const arr = LOGS[k].sessions?.[type]?.ex?.[name];
+    if (hasReps(arr)) return { key: k, arr };
+  }
+  return null;
+}
+function lastSessionTotal(type, beforeKey) {
+  const keys = sortedKeys().filter(k => k < beforeKey).reverse();
+  for (const k of keys) {
+    const t = sessionTotal(LOGS[k].sessions?.[type]);
+    if (t != null) return { key: k, total: t, sess: LOGS[k].sessions[type] };
+  }
+  return null;
+}
+
+// Rep change across exercises logged in both sessions, so a half-logged
+// session isn't compared against a full one
+function compareSessions(cur, prev) {
+  let diff = 0, common = 0;
+  for (const [name, arr] of Object.entries(cur?.ex || {})) {
+    const info = exInfo(name);
+    if ((info && info.sec) || !hasReps(arr) || !hasReps(prev?.ex?.[name])) continue;
+    diff += sumReps(arr) - sumReps(prev.ex[name]);
+    common++;
+  }
+  return common ? { diff, common } : null;
+}
+
+// Main sessions (push/pull/upper) in order, each compared to the previous
+// non-deload session of the same type.
+function mainSessionHistory() {
+  const out = [];
+  const prevByType = {};
+  for (const k of sortedKeys()) {
+    if (isDeload(k)) continue;
+    for (const type of ['push','pull','upper']) {
+      const sess = LOGS[k].sessions?.[type];
+      const total = sessionTotal(sess);
+      if (total == null) continue;
+      const cmp = prevByType[type] ? compareSessions(sess, prevByType[type]) : null;
+      out.push({ key: k, type, total, prev: cmp ? cmp.diff : null, stalled: !!cmp && cmp.diff <= 0 });
+      prevByType[type] = sess;
+    }
+  }
+  return out;
+}
+function stallStatus() {
+  const compared = mainSessionHistory().filter(s => s.prev != null);
+  const last2 = compared.slice(-2);
+  return last2.length === 2 && last2.every(s => s.stalled) ? last2 : null;
+}
+
+function isSessionDone(k, type) {
+  const d = LOGS[k] || {};
+  if (d.sessions?.[type]?.done) return true;
+  return (d.workouts || []).some(w => w.type === type);
+}
+
+function dayTotals(k) {
+  return (LOGS[k]?.meals || []).reduce((acc, m) => {
+    acc.cal += Number(m.cal) || 0; acc.p += Number(m.protein) || 0;
+    acc.f += Number(m.fat) || 0; acc.c += Number(m.carbs) || 0; acc.n++;
+    return acc;
+  }, { cal:0, p:0, f:0, c:0, n:0 });
+}
+
+// Average over days that actually have meals logged in the 7 days ending at k
+function rollingIntake(k) {
+  let cal = 0, p = 0, days = 0;
+  for (let i = 0; i < 7; i++) {
+    const t = dayTotals(addDays(k, -i));
+    if (t.n) { cal += t.cal; p += t.p; days++; }
+  }
+  return days ? { cal: Math.round(cal / days), p: Math.round(p / days), days } : null;
+}
+
+function rollingWeight(k) {
+  const vals = [];
+  for (let i = 0; i < 7; i++) {
+    const w = LOGS[addDays(k, -i)]?.weight;
+    if (w) vals.push(Number(w));
+  }
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+}
+
+function latestWeight(upTo) {
+  const keys = sortedKeys().filter(k => k <= upTo && LOGS[k].weight).reverse();
+  return keys.length ? { key: keys[0], w: Number(LOGS[keys[0]].weight) } : null;
+}
+
+// Eat-back: leg day +200–300, add-on layer +150–250, finisher +100–150
+function calTarget(k) {
+  const d = LOGS[k] || {};
+  let lo = GOALS.calLo, hi = GOALS.calHi;
+  const notes = [];
+  if (d.sessions?.legs?.done || (SCHEDULE[parseKey(k).getDay()] === 'legs' && !d.sessions?.legs)) {
+    lo += 200; hi += 300; notes.push('leg day');
+  }
+  const a = d.addons || {};
+  if (a.vitamins || a.gtg > 0 || d.sessions?.light?.done) { lo += 150; hi += 250; notes.push('add-ons'); }
+  if (d.sessions?.finisher?.done) { lo += 100; hi += 150; notes.push('finisher'); }
+  return { lo, hi, notes };
+}
+
+function fmt(n) { return Number(n).toLocaleString(); }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+// ===== RENDER =====
+function renderAll() {
+  const isToday = selectedKey === todayKey;
+  document.getElementById('dateLabel').textContent = isToday ? 'Today · ' + shortDate(selectedKey) : parseKey(selectedKey).toDateString();
+  const w = blockWeek(selectedKey), left = daysBetween(selectedKey, CHECKPOINT);
+  document.getElementById('blockLine').textContent = w > 0 && w <= 10
+    ? `Block week ${w} of 10 · ${left} days to Jan 5${isDeload(selectedKey) ? ' · DELOAD' : ''}`
+    : `${left} days to Jan 5 checkpoint`;
+  renderDashboard();
+  renderSession();
+  renderMeals();
+  renderProgress();
+  const wt = day().weight;
+  document.getElementById('weightInput').value = wt || '';
+}
+
+function renderDashboard() {
+  const k = selectedKey;
+  const type = SCHEDULE[parseKey(k).getDay()];
+  const p = PLAN[type];
+  let txt = `${p.icon} ${p.name}`;
+  if (type === 'bike') txt += ' — ride + optional finisher';
+  if (type === 'light') txt = '🌙 Rest — optional light session if it’s NOT your going-out night';
+  if (isSessionDone(k, type)) txt += ' · ✅ done';
+  document.getElementById('suggestedWorkout').textContent = txt;
+
+  const banner = document.getElementById('weekBanner');
+  const notes = [];
+  if (isDeload(k)) notes.push('Deload week: same exercises, 2 sets each, easy effort.');
+  if (blockWeek(k) > 0 && blockWeek(k) <= 2) notes.push('Legs weeks 1–2: 2 sets of everything.');
+  banner.textContent = notes.join(' ');
+  banner.classList.toggle('hidden', !notes.length);
+
+  const stall = stallStatus();
+  const sb = document.getElementById('stallBanner');
+  sb.classList.toggle('hidden', !stall);
+  if (stall) sb.innerHTML = `⚠️ Main sessions stalled twice in a row (${stall.map(s => PLAN[s.type].name + ' ' + shortDate(s.key)).join(', ')}). Cut order: 1) Fri/Sat light session → 2) grease-the-groove → 3) Thursday finisher. Vitamins go last.`;
+
+  const t = dayTotals(k), tgt = calTarget(k);
+  document.getElementById('calEaten').textContent = fmt(t.cal);
+  document.getElementById('calTarget').textContent = `Target: ${fmt(tgt.lo)}–${fmt(tgt.hi)}`;
+  setRange('calBar', t.cal, tgt.lo, tgt.hi);
+  document.getElementById('pEaten').textContent = t.p;
+  setRange('pBar', t.p, GOALS.protein, GOALS.protein * 1.6);
+  const r = rollingIntake(k);
+  document.getElementById('calAvg').innerHTML = r ? avgSpan(r.cal, GOALS.calLo, `${fmt(r.cal)} kcal`) + ` <span class="muted">(${r.days}d logged)</span>` : '--';
+  document.getElementById('pAvg').innerHTML = r ? avgSpan(r.p, GOALS.protein, `${r.p} g`) : '--';
+
+  const lw = latestWeight(k), avg = rollingWeight(k);
+  document.getElementById('currentWeightTxt').textContent = lw ? `${lw.w} lbs (${shortDate(lw.key)})` : '-- lbs';
+  document.getElementById('weightAvgTxt').textContent = avg ? avg.toFixed(1) + ' lbs' : '--';
+  const weeksLeft = daysBetween(k, CHECKPOINT) / 7;
+  const base = avg || lw?.w;
+  document.getElementById('paceTxt').textContent = base && weeksLeft > 0
+    ? `${Math.max(0, (WEIGHT_TARGET_LO - base) / weeksLeft).toFixed(2)} lb/week to hit ${WEIGHT_TARGET_LO}` : '--';
+}
+
+function avgSpan(v, goal, label) {
+  return `<span class="${v >= goal ? 'good' : 'warn'}">${label}</span>`;
+}
+
+function setRange(id, value, lo, hi) {
+  const pct = Math.min((value / hi) * 100, 100);
+  const bar = document.getElementById(id);
+  bar.style.width = pct + '%';
+  bar.classList.toggle('low', value < lo);
+}
+
+// ----- Train tab -----
+function renderSession() {
+  const k = selectedKey;
+  if (!selectedSession) selectedSession = SCHEDULE[parseKey(k).getDay()];
+  renderSessionHeader();
+  const type = selectedSession, plan = PLAN[type];
+  const sess = day().sessions?.[type] || {};
+  document.getElementById('exerciseList').innerHTML = plan.ex.map((ex, i) => exerciseCard(type, ex, i, sess)).join('');
+
+  const isBike = type === 'bike';
+  document.getElementById('bikeCard').classList.toggle('hidden', !isBike);
+  if (isBike) {
+    document.getElementById('bikeDistance').value = sess.miles ?? '';
+    document.getElementById('bikeTime').value = sess.minutes ?? '';
+  }
+
+  const a = day().addons || {};
+  setToggle('vitBtn', a.vitamins, 'Done', 'Not yet');
+  document.getElementById('gtgCount').textContent = a.gtg || 0;
+  const dow = parseKey(k).getDay();
+  document.getElementById('gtgNote').textContent = (dow === 1 || dow === 0) ? 'Skip today — chest trained hard' : 'Half-max, 4–6 sets, 2+ shy of failure';
+  document.getElementById('outRow').classList.toggle('hidden', !(dow === 5 || dow === 6));
+  setToggle('outBtn', a.out, 'Yes — full rest', 'No');
+
+  renderWorkouts(day().workouts || []);
+}
+
+// Everything on the Train tab except the rep inputs (safe to redraw mid-entry)
+function renderSessionHeader() {
+  const k = selectedKey, type = selectedSession, plan = PLAN[type];
+  const sess = day().sessions?.[type] || {};
+
+  document.getElementById('sessionChips').innerHTML = Object.keys(PLAN).map(t =>
+    `<button class="chip ${t === type ? 'active' : ''} ${isSessionDone(k, t) ? 'isDone' : ''}" onclick="pickSession('${t}')">${PLAN[t].icon} ${PLAN[t].name}</button>`
+  ).join('');
+
+  document.getElementById('sessionTitle').textContent = `${plan.icon} ${plan.name}`;
+  const done = isSessionDone(k, type);
+  const btn = document.getElementById('doneBtn');
+  btn.textContent = done ? '✓ Done' : 'Mark done';
+  btn.className = 'small ' + (done ? 'done' : 'ghost');
+
+  const banner = document.getElementById('sessionBanner');
+  let note = '';
+  if (isDeload(k) && plan.ex.length) note = 'Deload week — 2 sets each, easy effort.';
+  else if (type === 'legs' && blockWeek(k) <= 2) note = 'Weeks 1–2 — 2 sets of everything. Eat back ~200–300 kcal.';
+  else if (type === 'legs') note = 'Eat back ~200–300 kcal today.';
+  else if (type === 'finisher') note = 'Light — stop 2–3 reps shy of failure. Eat back ~100–150 kcal.';
+  else if (type === 'light') note = 'Only on the non-going-out night. 3+ reps shy of failure.';
+  banner.textContent = note;
+  banner.classList.toggle('hidden', !note);
+
+  // Summary vs last session of this type
+  const total = sessionTotal(sess), last = lastSessionTotal(type, k);
+  let summary = '';
+  if (plan.ex.length) {
+    const cmp = total != null && last ? compareSessions(sess, last.sess) : null;
+    if (cmp) {
+      const diff = cmp.diff;
+      summary = `Total ${total} reps · <span class="${diff > 0 ? 'good' : diff === 0 ? 'warn' : 'bad'}">${diff > 0 ? '+' : ''}${diff}</span> vs ${shortDate(last.key)} (${cmp.common} matching exercise${cmp.common > 1 ? 's' : ''})`;
+    } else if (total != null) summary = `Total ${total} reps`;
+    else if (last) summary = `Beat ${last.total} total reps (${shortDate(last.key)})`;
+    else summary = 'First logged session — set the baseline.';
+  }
+  document.getElementById('sessionSummary').innerHTML = summary;
+}
+
+function exerciseCard(type, ex, i, sess) {
+  const k = selectedKey;
+  const sets = plannedSets(type, ex, k);
+  const arr = sess.ex?.[ex.n] || [];
+  const last = lastFor(type, ex.n, k);
+  const unit = ex.sec ? 's' : '';
+  const range = ex.nf ? 'near failure' : (ex.lo === ex.hi ? `${ex.lo}${unit}` : `${ex.lo}–${ex.hi}${unit}`);
+  const target = `${sets} × ${range}${ex.side ? ' /side' : ''} · ${ex.r}s rest`;
+  const n = Math.max(sets, arr.length);
+  let inputs = '';
+  for (let s = 0; s < n; s++) {
+    const v = arr[s] ?? '';
+    const ph = last?.arr?.[s] ?? (ex.nf ? '' : ex.hi);
+    inputs += `<input type="number" inputmode="numeric" data-x="${i}" data-s="${s}" value="${v}" placeholder="${ph}" onchange="saveReps(${i})">`;
+  }
+
+  const lastTxt = last ? `Last ${shortDate(last.key)}: ${last.arr.map(v => v ?? '–').join(' · ')}` : '';
+  return `<div class="card">
+    <div class="row"><span class="exName">${esc(ex.n)}</span><span class="muted">${target}</span></div>
+    ${CUES[ex.n] ? `<div class="cue">${esc(CUES[ex.n])}</div>` : ''}
+    ${lastTxt ? `<div class="muted" style="margin-top:4px;">${lastTxt}</div>` : ''}
+    <div class="reps">${inputs}<button class="small ghost" onclick="addSet(${i})">+</button></div>
+    <div id="status-${i}">${exerciseStatus(type, ex, arr, last, sets)}</div>
+  </div>`;
+}
+
+function exerciseStatus(type, ex, arr, last, sets) {
+  let status = '';
+  if (hasReps(arr)) {
+    const filled = arr.slice(0, sets);
+    const allTop = !ex.nf && filled.length >= sets && filled.every(v => Number(v) >= ex.hi);
+    if (allTop) status = `<div class="good" style="font-size:12px;margin-top:4px;">✅ Top of range every set — add reps or a set next time</div>`;
+    if (last) {
+      const diff = sumReps(arr) - sumReps(last.arr);
+      status += `<div class="${diff > 0 ? 'good' : diff === 0 ? 'warn' : 'bad'}" style="font-size:12px;margin-top:2px;">${diff > 0 ? '▲ +' + diff : diff === 0 ? '= same as' : '▼ ' + diff} vs last</div>`;
+    }
+  }
+  return status;
+}
+
+function setToggle(id, on, onTxt, offTxt) {
+  const b = document.getElementById(id);
+  b.textContent = on ? onTxt : offTxt;
+  b.className = 'small ' + (on ? 'done' : 'ghost');
+}
+
+function pickSession(t) { selectedSession = t; renderSession(); }
+
+function readReps(i) {
+  const vals = [...document.querySelectorAll(`#exerciseList input[data-x="${i}"]`)]
+    .map(el => el.value === '' ? null : Number(el.value));
+  while (vals.length && vals[vals.length - 1] == null) vals.pop();
+  return vals;
+}
+
+async function saveReps(i) {
+  const type = selectedSession, ex = PLAN[type].ex[i];
+  const vals = readReps(i);
+  const patch = { sessions: { [type]: { ex: { [ex.n]: vals } } } };
+  if (vals.length) patch.sessions[type].done = true;
+  // Redraw only status lines so focus stays in the next rep box
+  const save = patchDay(patch, null, true);
+  document.getElementById('status-' + i).innerHTML = exerciseStatus(type, ex, vals, lastFor(type, ex.n, selectedKey), plannedSets(type, ex, selectedKey));
+  renderSessionHeader();
+  renderDashboard();
+  renderMeals();
+  renderProgress();
+  await save;
+}
+
+function addSet(i) {
+  const type = selectedSession, ex = PLAN[type].ex[i];
+  const arr = day().sessions?.[type]?.ex?.[ex.n] || [];
+  const sets = plannedSets(type, ex, selectedKey);
+  const cur = readReps(i);
+  // Pad with nulls so the new empty box survives a re-render
+  const len = Math.max(sets, arr.length, cur.length) + 1;
+  const vals = Array.from({ length: len }, (_, s) => cur[s] ?? null);
+  LOGS[selectedKey] = deepMerge(LOGS[selectedKey] || {}, { sessions: { [type]: { ex: { [ex.n]: vals } } } });
+  renderSession();
+}
+
+async function toggleDone() {
+  const type = selectedSession;
+  await patchDay({ sessions: { [type]: { done: !day().sessions?.[type]?.done } } });
+}
+
+async function saveBike() {
+  const miles = document.getElementById('bikeDistance').value;
+  const minutes = document.getElementById('bikeTime').value;
+  await patchDay({ sessions: { bike: {
+    miles: miles === '' ? null : Number(miles),
+    minutes: minutes === '' ? null : Number(minutes),
+    done: miles !== '' || minutes !== '' || !!day().sessions?.bike?.done,
+  } } });
+}
+
+async function toggleAddon(name) {
+  await patchDay({ addons: { [name]: !day().addons?.[name] } });
+}
+async function bumpGtg(n) {
+  await patchDay({ addons: { gtg: Math.max(0, (day().addons?.gtg || 0) + n) } });
+}
+
+// Entries from the original free-text workout log
 async function deleteWorkout(index) {
-  const doc = await dayRef().get();
-  const data = doc.data();
-  data.workouts.splice(index, 1);
-  await dayRef().set(data, { merge: true });
-  loadToday();
+  const workouts = [...(day().workouts || [])];
+  workouts.splice(index, 1);
+  await patchDay({ workouts });
 }
 
 function renderWorkouts(workouts) {
+  document.getElementById('legacyCard').classList.toggle('hidden', !workouts.length);
   const list = document.getElementById('workoutList');
   list.innerHTML = '';
   workouts.forEach((w, i) => {
@@ -370,81 +875,221 @@ function renderWorkouts(workouts) {
       : `🏋️ ${w.type} — ${w.notes || ''}`;
     const div = document.createElement('div');
     div.className = 'entryItem';
-    div.innerHTML = `<span>${label}</span><button class="delBtn" onclick="deleteWorkout(${i})">✕</button>`;
+    div.innerHTML = `<span>${esc(label)}</span><button class="delBtn" onclick="deleteWorkout(${i})">✕</button>`;
     list.appendChild(div);
   });
 }
 
-function updateDashboard(meals) {
-  const totals = meals.reduce((acc, m) => {
-    acc.cal += m.cal; acc.p += m.protein; acc.f += m.fat; acc.c += m.carbs;
-    return acc;
-  }, { cal:0, p:0, f:0, c:0 });
-
-  document.getElementById('calEaten').textContent = totals.cal;
-  setBar('calBar', totals.cal, GOALS.calories);
-  document.getElementById('pTxt').textContent = `${totals.p} / ${GOALS.protein}g`;
-  setBar('pBar', totals.p, GOALS.protein);
-  document.getElementById('fTxt').textContent = `${totals.f} / ${GOALS.fat}g`;
-  setBar('fBar', totals.f, GOALS.fat);
-  document.getElementById('cTxt').textContent = `${totals.c} / ${GOALS.carbs}g`;
-  setBar('cBar', totals.c, GOALS.carbs);
+// ----- Food tab -----
+async function addMeal(preset) {
+  const meal = preset ? { name: preset.name, cal: preset.cal, protein: preset.protein, fat: 0, carbs: 0 } : {
+    name: document.getElementById('mealName').value || "Meal",
+    cal: Number(document.getElementById('mealCal').value) || 0,
+    protein: Number(document.getElementById('mealProtein').value) || 0,
+    fat: Number(document.getElementById('mealFat').value) || 0,
+    carbs: Number(document.getElementById('mealCarb').value) || 0,
+  };
+  meal.time = new Date().toLocaleTimeString();
+  if (!preset) ['mealName','mealCal','mealProtein','mealFat','mealCarb'].forEach(id => document.getElementById(id).value = '');
+  await patchDay({ meals: [...(day().meals || []), meal] });
 }
 
-function setBar(id, value, goal) {
-  const pct = Math.min((value / goal) * 100, 100);
-  const bar = document.getElementById(id);
-  bar.style.width = pct + '%';
-  bar.classList.toggle('over', value > goal);
+async function deleteMeal(index) {
+  const meals = [...(day().meals || [])];
+  meals.splice(index, 1);
+  await patchDay({ meals });
 }
 
+function renderMeals() {
+  document.getElementById('quickRow').innerHTML = QUICK_FOODS.map((f, i) =>
+    `<button class="small ghost" onclick="addMeal(QUICK_FOODS[${i}])">${esc(f.name)}<br><span class="muted">${fmt(f.cal)} · ${f.protein}g</span></button>`
+  ).join('');
+  const meals = day().meals || [];
+  const t = dayTotals(selectedKey), tgt = calTarget(selectedKey);
+  document.getElementById('mealTotals').textContent = `${fmt(t.cal)} kcal · ${t.p} g protein`;
+  document.getElementById('mealTarget').textContent = `Target ${fmt(tgt.lo)}–${fmt(tgt.hi)}${tgt.notes.length ? ' (' + tgt.notes.join(', ') + ')' : ''}`;
+  const list = document.getElementById('mealList');
+  list.innerHTML = '';
+  meals.forEach((m, i) => {
+    const div = document.createElement('div');
+    div.className = 'entryItem';
+    const extra = (m.fat || m.carbs) ? ` (F:${m.fat} C:${m.carbs})` : '';
+    div.innerHTML = `<span>${esc(m.name)} — ${m.cal} cal · ${m.protein}g P${extra}</span>
+      <button class="delBtn" onclick="deleteMeal(${i})">✕</button>`;
+    list.appendChild(div);
+  });
+}
+
+// ----- Weight tab -----
 async function saveWeight() {
   const weight = Number(document.getElementById('weightInput').value);
   if (!weight) return alert('Enter a valid weight');
-  await dayRef().set({ weight }, { merge: true });
-  document.getElementById('currentWeightTxt').textContent = weight + " lbs";
+  await patchDay({ weight });
   loadWeightHistory();
 }
 
-async function loadWeightHistory() {
-  const snap = await db.collection('users').doc(currentUser.uid)
-    .collection('logs').orderBy(firebase.firestore.FieldPath.documentId()).get();
-  const labels = [];
-  const data = [];
-  snap.forEach(doc => {
-    const d = doc.data();
-    if (d.weight) {
-      labels.push(doc.id.slice(5));
-      data.push(d.weight);
-    }
-  });
-  renderChart(labels, data);
+function loadWeightHistory() {
+  const keys = sortedKeys().filter(k => LOGS[k].weight);
+  const start = keys.length && keys[0] < BLOCK_START ? keys[0] : addDays(BLOCK_START, -7);
+  const end = CHECKPOINT;
+  const labels = [], points = [], avg = [], pace = [];
+  const span = daysBetween(BLOCK_START, CHECKPOINT);
+  const goalMid = (WEIGHT_TARGET_LO + WEIGHT_TARGET_HI) / 2;
+  for (let k = start; k <= end; k = addDays(k, 1)) {
+    labels.push(shortDate(k));
+    points.push(LOGS[k]?.weight ? Number(LOGS[k].weight) : null);
+    avg.push(k <= todayKey && LOGS[k]?.weight ? Number(rollingWeight(k).toFixed(1)) : null);
+    const d = daysBetween(BLOCK_START, k);
+    pace.push(d >= 0 ? Number((WEIGHT_START + (goalMid - WEIGHT_START) * d / span).toFixed(2)) : null);
+  }
+  renderChart(labels, points, avg, pace);
 }
 
 let weightChartInstance = null;
-function renderChart(labels, data) {
+function renderChart(labels, points, avg, pace) {
   const ctx = document.getElementById('weightChart');
   if (weightChartInstance) weightChartInstance.destroy();
   weightChartInstance = new Chart(ctx, {
     type: 'line',
     data: {
       labels,
-      datasets: [{
-        label: 'Weight (lbs)',
-        data,
-        borderColor: '#ff6a00',
-        backgroundColor: 'rgba(255,106,0,0.2)',
-        tension: 0.3
-      }]
+      datasets: [
+        { label: 'Weigh-in', data: points, showLine: false, pointRadius: 4, borderColor: '#eee', backgroundColor: '#eee' },
+        { label: '7-day avg', data: avg, borderColor: '#ff6a00', backgroundColor: 'rgba(255,106,0,0.2)', tension: 0.3, spanGaps: true, pointRadius: 0 },
+        { label: 'Target pace', data: pace, borderColor: '#66bb6a', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5 },
+      ]
     },
     options: {
-      plugins: { legend: { labels: { color: '#eee' } } },
+      plugins: { legend: { labels: { color: '#eee', boxWidth: 12 } } },
       scales: {
-        x: { ticks: { color: '#aaa' } },
-        y: { ticks: { color: '#aaa' } }
+        x: { ticks: { color: '#aaa', maxTicksLimit: 8 } },
+        y: { ticks: { color: '#aaa' }, suggestedMin: 143, suggestedMax: 156 }
       }
     }
   });
+}
+
+// ----- Progress tab -----
+function renderProgress() {
+  const left = daysBetween(todayKey, CHECKPOINT);
+  document.getElementById('cpDays').textContent = Math.max(0, left);
+  const avg = rollingWeight(todayKey), lw = latestWeight(todayKey);
+  const cur = avg || lw?.w;
+  document.getElementById('cpWeight').innerHTML = cur
+    ? `${cur.toFixed(1)} lbs · <span class="${cur >= WEIGHT_TARGET_LO ? 'good' : 'warn'}">${cur >= WEIGHT_TARGET_LO ? 'on target' : (WEIGHT_TARGET_LO - cur).toFixed(1) + ' to go'}</span>`
+    : '--';
+
+  // Adherence: planned vs completed by session type, block start → today
+  const planned = {}, done = {};
+  PLANNED_TYPES.forEach(t => { planned[t] = 0; done[t] = 0; });
+  let vitDays = 0, gtgSets = 0, lightCount = 0, blockMiles = 0, allMiles = 0;
+  for (const k of sortedKeys()) {
+    const d = LOGS[k];
+    const miles = (d.sessions?.bike?.miles || 0) + (d.workouts || []).filter(w => w.type === 'bike').reduce((a, w) => a + (Number(w.distance) || 0), 0);
+    allMiles += miles;
+    if (k < BLOCK_START || k > todayKey) continue;
+    blockMiles += miles;
+    PLANNED_TYPES.forEach(t => { if (isSessionDone(k, t)) done[t]++; });
+    if (d.addons?.vitamins) vitDays++;
+    gtgSets += d.addons?.gtg || 0;
+    if (d.sessions?.light?.done) lightCount++;
+  }
+  for (let k = BLOCK_START; k <= todayKey; k = addDays(k, 1)) {
+    const t = SCHEDULE[parseKey(k).getDay()];
+    if (planned[t] != null) planned[t]++;
+  }
+  document.getElementById('adherenceTable').innerHTML =
+    '<tr><th>Session</th><th class="num">Planned</th><th class="num">Done</th></tr>' +
+    PLANNED_TYPES.map(t => {
+      const cls = done[t] >= planned[t] ? 'good' : done[t] >= planned[t] - 1 ? 'warn' : 'bad';
+      return `<tr><td>${PLAN[t].icon} ${PLAN[t].name}</td><td class="num">${planned[t]}</td><td class="num ${cls}">${done[t]}</td></tr>`;
+    }).join('');
+  document.getElementById('bikeMiles').textContent = `${blockMiles} / ${allMiles} mi`;
+  document.getElementById('addonStats').textContent = `${vitDays} · ${gtgSets} · ${lightCount}`;
+
+  // Progression: session totals per type, flag stalls
+  const hist = mainSessionHistory();
+  const legs = sortedKeys().map(k => ({ key: k, type: 'legs', total: sessionTotal(LOGS[k].sessions?.legs) })).filter(s => s.total != null);
+  const html = ['push','pull','upper','legs'].map(type => {
+    const rows = type === 'legs' ? legs : hist.filter(s => s.type === type);
+    if (!rows.length) return `<div class="row"><span>${PLAN[type].icon} ${PLAN[type].name}</span><span class="muted">no reps logged yet</span></div>`;
+    // First session = baseline total; after that, rep change vs previous session
+    const chain = rows.slice(-5).map(s => s.prev == null
+      ? `<span title="${s.key}">${s.total}</span>`
+      : `<span class="${s.stalled ? 'bad' : 'good'}" title="${s.key}">${s.prev > 0 ? '+' : ''}${s.prev}</span>`).join(' → ');
+    return `<div class="row"><span>${PLAN[type].icon} ${PLAN[type].name}</span><span>${chain}</span></div>`;
+  }).join('');
+  const stall = stallStatus();
+  document.getElementById('progressionList').innerHTML = html +
+    (stall ? `<div class="bad" style="font-size:12px;margin-top:6px;">⚠️ Two straight stalls → cut the Fri/Sat light session first.</div>` : '');
+
+  // Weekly averages (Mon–Sun)
+  const weeks = {};
+  for (const k of sortedKeys()) {
+    const d = parseKey(k); const mon = addDays(k, -((d.getDay() + 6) % 7));
+    const w = weeks[mon] = weeks[mon] || { cal:0, p:0, days:0, wsum:0, wn:0 };
+    const t = dayTotals(k);
+    if (t.n) { w.cal += t.cal; w.p += t.p; w.days++; }
+    if (LOGS[k].weight) { w.wsum += Number(LOGS[k].weight); w.wn++; }
+  }
+  const rows = Object.keys(weeks).sort().reverse().slice(0, 10).map(mon => {
+    const w = weeks[mon];
+    const cal = w.days ? Math.round(w.cal / w.days) : null, p = w.days ? Math.round(w.p / w.days) : null;
+    return `<tr><td>${shortDate(mon)}</td>
+      <td class="num ${cal == null ? '' : cal >= GOALS.calLo ? 'good' : 'warn'}">${cal == null ? '–' : fmt(cal)}</td>
+      <td class="num ${p == null ? '' : p >= GOALS.protein ? 'good' : 'warn'}">${p ?? '–'}</td>
+      <td class="num">${w.days}</td>
+      <td class="num">${w.wn ? (w.wsum / w.wn).toFixed(1) : '–'}</td></tr>`;
+  }).join('');
+  document.getElementById('weeklyTable').innerHTML =
+    '<tr><th>Week of</th><th class="num">kcal</th><th class="num">P (g)</th><th class="num">Days</th><th class="num">Lbs</th></tr>' + rows;
+}
+
+function showPhoto(input, imgId) {
+  const file = input.files[0];
+  if (file) document.getElementById(imgId).src = URL.createObjectURL(file);
+}
+
+// What Jarvis tracked before this app (Oct 2026). Partial-day food tallies
+// are left out so they don't drag down the weekly averages.
+const JARVIS_HISTORY = {
+  '2026-10-13': { sessions: { bike: { done: true, miles: 5 } } },
+  '2026-10-15': { sessions: { bike: { done: true, miles: 10 } } },
+  '2026-10-19': { sessions: { push: { done: true } } },
+  '2026-10-20': { sessions: { bike: { done: true, miles: 6 } } },
+  '2026-10-21': { meals: [{ name: 'Day total (Jarvis est.)', cal: 3400, protein: 200, fat: 0, carbs: 0 }] },
+  '2026-10-22': { sessions: { bike: { done: true, miles: 6 } }, meals: [{ name: 'Day total (Jarvis est.)', cal: 3850, protein: 168, fat: 0, carbs: 0 }] },
+  '2026-10-23': { weight: 145 },
+  '2026-10-27': { sessions: { legs: { done: true, note: 'fuckin tough' } } },
+  '2026-10-28': { weight: 146 },
+};
+
+// Only fills fields that are empty for that date
+function missingOnly(existing, patch) {
+  const out = {};
+  for (const [k, v] of Object.entries(patch)) {
+    const cur = existing?.[k];
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const sub = missingOnly(cur, v);
+      if (Object.keys(sub).length) out[k] = sub;
+    } else if (cur == null || (Array.isArray(cur) && !cur.length)) {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+async function importHistory() {
+  let n = 0;
+  for (const [k, patch] of Object.entries(JARVIS_HISTORY)) {
+    const p = missingOnly(LOGS[k], patch);
+    if (!Object.keys(p).length) continue;
+    LOGS[k] = deepMerge(LOGS[k] || {}, p);
+    await dayRef(k).set(p, { merge: true });
+    n++;
+  }
+  renderAll();
+  alert(n ? `Imported history into ${n} day(s).` : 'Already imported — nothing new.');
 }
 </script>
 </body>
