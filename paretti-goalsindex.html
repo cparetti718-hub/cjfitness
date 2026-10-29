@@ -296,6 +296,19 @@
       </div>
     </div>
     <div class="card">
+      <h2>🤖 Muse Link</h2>
+      <div class="muted" style="margin-bottom:8px;">A private link Muse can read: your plan, weigh-ins, food averages, sessions with reps, rides. Updates itself whenever you log. Anyone with the link can read it — reset it if it leaks.</div>
+      <div id="museOff"><button class="ghost" onclick="createMuseLink()" style="width:100%;">Create Muse link</button></div>
+      <div id="museOn" class="hidden">
+        <input id="museUrl" readonly onclick="this.select()">
+        <div class="row">
+          <button class="small" onclick="copyMuseLink()">Copy link</button>
+          <button class="small ghost" onclick="resetMuseLink()">Reset link</button>
+        </div>
+      </div>
+      <div class="muted" id="museStatus" style="margin-top:6px;"></div>
+    </div>
+    <div class="card">
       <h2>📥 Import History</h2>
       <div class="muted" style="margin-bottom:8px;">Loads what Jarvis tracked before this app (weigh-ins, bike rides, confirmed sessions, full-day food totals). Never overwrites anything you've logged.</div>
       <button class="ghost" onclick="importHistory()" style="width:100%;">Import Jarvis history</button>
@@ -499,9 +512,11 @@ function dayRef(k) { return logsRef().doc(k || selectedKey); }
 function day(k) { return LOGS[k || selectedKey] || {}; }
 
 async function loadAll() {
-  const snap = await logsRef().get();
+  const [snap, userDoc] = await Promise.all([logsRef().get(), db.collection('users').doc(currentUser.uid).get()]);
   LOGS = {};
   snap.forEach(doc => { LOGS[doc.id] = doc.data(); });
+  museToken = (userDoc.exists && userDoc.data().museToken) || null;
+  scheduleMuseSync(0);
 }
 
 // Deep-merge plain objects; arrays and scalars replace (same as Firestore set+merge)
@@ -522,6 +537,7 @@ async function patchDay(patch, k, quiet) {
   LOGS[k] = deepMerge(LOGS[k] || {}, patch);
   if (!quiet) renderAll();
   await dayRef(k).set(patch, { merge: true });
+  scheduleMuseSync();
 }
 
 // ===== SESSION MATH =====
@@ -1067,6 +1083,136 @@ function renderProgress() {
     '<tr><th>Week of</th><th class="num">kcal</th><th class="num">P (g)</th><th class="num">Days</th><th class="num">Lbs</th></tr>' + rows;
 }
 
+// ===== MUSE LINK =====
+// shares/{token} holds a plain-text summary; Firestore rules allow anyone to
+// get (not list) a share, and only its owner to write it.
+let museToken = null, museTimer = null;
+const PLAN_DOC_URL = 'https://raw.githubusercontent.com/cparetti718-hub/cjfitness/main/context/craig-workout-journey.md';
+
+function museUrl(token) {
+  return `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/shares/${token}?key=${firebaseConfig.apiKey}`;
+}
+function newToken() {
+  return [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function buildMuseSummary() {
+  const t = todayKey, L = [];
+  const wk = blockWeek(t);
+  L.push(`# Craig's training log (Paretti Fitness)`);
+  L.push(`Updated: ${new Date().toLocaleString()} · Today: ${t} · Block week ${wk} of 10 (Oct 27, 2026 → Jan 5, 2027)${isDeload(t) ? ' · DELOAD WEEK' : ''} · ${daysBetween(t, CHECKPOINT)} days to Jan 5 checkpoint`);
+  L.push(`Full plan, history and preferences: ${PLAN_DOC_URL}`);
+  L.push('');
+  L.push(`## Targets`);
+  L.push(`- Weight: ${WEIGHT_START} → ${WEIGHT_TARGET_LO}–${WEIGHT_TARGET_HI} lb by Jan 5 (morning, post-bathroom weigh-ins)`);
+  L.push(`- Calories ${GOALS.calLo}–${GOALS.calHi}/day (+200–300 leg day, +150–250 add-ons, +100–150 finisher), protein ${GOALS.protein} g/day — judged by weekly average`);
+  L.push(`- Schedule: Mon Push · Tue Legs · Wed Pull · Thu Bike (+optional finisher) · Fri/Sat rest or light (not on going-out night) · Sun Upper Mix`);
+  L.push(`- Equipment: two 15-lb dumbbells, bike. Progression = reps/tempo/sets, not weight. Rep holds or drops are NOT flagged as stalls (his call).`);
+  L.push('');
+
+  L.push(`## Weight`);
+  const lw = latestWeight(t), avg = rollingWeight(t);
+  L.push(`Latest: ${lw ? `${lw.w} lb on ${lw.key}` : 'none'} · 7-day avg: ${avg ? avg.toFixed(1) + ' lb' : 'n/a'}`);
+  const weighIns = sortedKeys().filter(k => LOGS[k].weight).map(k => `${k}: ${LOGS[k].weight}`);
+  L.push(`Weigh-ins: ${weighIns.join(' · ') || 'none'}`);
+  L.push('');
+
+  L.push(`## Food (weekly averages over days logged)`);
+  const weeks = {};
+  for (const k of sortedKeys()) {
+    const tt = dayTotals(k); if (!tt.n) continue;
+    const mon = addDays(k, -((parseKey(k).getDay() + 6) % 7));
+    const w = weeks[mon] = weeks[mon] || { cal: 0, p: 0, days: 0 };
+    w.cal += tt.cal; w.p += tt.p; w.days++;
+  }
+  for (const mon of Object.keys(weeks).sort()) {
+    const w = weeks[mon];
+    L.push(`- Week of ${mon}: ${fmt(Math.round(w.cal / w.days))} kcal, ${Math.round(w.p / w.days)} g protein (${w.days} days logged)`);
+  }
+  L.push(`Last 7 days:`);
+  for (let i = 6; i >= 0; i--) {
+    const k = addDays(t, -i), tt = dayTotals(k);
+    L.push(`- ${k}: ${tt.n ? `${fmt(tt.cal)} kcal, ${tt.p} g protein — ${(LOGS[k].meals || []).map(m => m.name).join(', ')}` : 'not logged'}`);
+  }
+  L.push('');
+
+  L.push(`## Sessions (reps per set; /side where noted in plan)`);
+  for (const k of sortedKeys()) {
+    const d = LOGS[k], parts = [];
+    for (const [type, sess] of Object.entries(d.sessions || {})) {
+      if (!PLAN[type]) continue;
+      if (type === 'bike') {
+        if (sess.done || sess.miles) parts.push(`Bike ${sess.miles ?? '?'} mi${sess.minutes ? ' / ' + sess.minutes + ' min' : ''}`);
+        continue;
+      }
+      const ex = Object.entries(sess.ex || {}).filter(([, a]) => hasReps(a))
+        .map(([n, a]) => `${n} ${a.map(v => v ?? '–').join('/')}${exInfo(n)?.sec ? 's' : ''}`);
+      if (sess.done || ex.length) parts.push(`${PLAN[type].name}${sess.done ? ' ✓' : ''}${ex.length ? ': ' + ex.join('; ') : ' (reps not logged)'}${sess.note ? ` — "${sess.note}"` : ''}`);
+    }
+    for (const w of d.workouts || []) parts.push(w.type === 'bike' ? `Bike ${w.distance} mi / ${w.duration} min` : `${w.type}: ${w.notes || ''}`);
+    const a = d.addons || {};
+    const add = [a.vitamins && 'vitamins', a.gtg && `${a.gtg} GTG push-up sets`, a.out && 'going-out night'].filter(Boolean);
+    if (add.length) parts.push(`Add-ons: ${add.join(', ')}`);
+    if (parts.length) L.push(`- ${k} (${parseKey(k).toLocaleDateString('en-US', { weekday: 'short' })}): ${parts.join(' | ')}`);
+  }
+  L.push('');
+
+  L.push(`## Adherence since Oct 27 (planned vs done)`);
+  const planned = {}, done = {};
+  PLANNED_TYPES.forEach(ty => { planned[ty] = 0; done[ty] = 0; });
+  for (let k = BLOCK_START; k <= t; k = addDays(k, 1)) {
+    const ty = SCHEDULE[parseKey(k).getDay()];
+    if (planned[ty] != null) planned[ty]++;
+    PLANNED_TYPES.forEach(x => { if (isSessionDone(k, x)) done[x]++; });
+  }
+  L.push(PLANNED_TYPES.map(ty => `${PLAN[ty].name} ${done[ty]}/${planned[ty]}`).join(' · '));
+  return L.join('\n');
+}
+
+function scheduleMuseSync(delay = 3000) {
+  if (!museToken) return renderMuse();
+  clearTimeout(museTimer);
+  museTimer = setTimeout(syncMuse, delay);
+}
+
+async function syncMuse() {
+  if (!museToken) return;
+  try {
+    await db.collection('shares').doc(museToken).set({ uid: currentUser.uid, text: buildMuseSummary(), updatedAt: new Date().toISOString() });
+    renderMuse(`Updated ${new Date().toLocaleTimeString()}`);
+  } catch (e) {
+    renderMuse(e.code === 'permission-denied'
+      ? 'Firebase is blocking the Muse link — add the shares rule in Firestore → Rules (see setup steps).'
+      : `Couldn't update Muse link: ${e.code || e.message}`);
+  }
+}
+
+function renderMuse(status) {
+  document.getElementById('museOff').classList.toggle('hidden', !!museToken);
+  document.getElementById('museOn').classList.toggle('hidden', !museToken);
+  if (museToken) document.getElementById('museUrl').value = museUrl(museToken);
+  if (status != null) document.getElementById('museStatus').textContent = status;
+}
+
+async function createMuseLink() {
+  museToken = newToken();
+  await db.collection('users').doc(currentUser.uid).set({ museToken }, { merge: true });
+  renderMuse('Creating…');
+  await syncMuse();
+}
+
+async function resetMuseLink() {
+  if (!confirm('Make a new link? The old one stops working.')) return;
+  const old = museToken;
+  await createMuseLink();
+  try { await db.collection('shares').doc(old).delete(); } catch (e) {}
+}
+
+async function copyMuseLink() {
+  try { await navigator.clipboard.writeText(museUrl(museToken)); renderMuse('Copied — paste it into Muse.'); }
+  catch (e) { document.getElementById('museUrl').select(); renderMuse('Select the link above and copy it.'); }
+}
+
 function showPhoto(input, imgId) {
   const file = input.files[0];
   if (file) document.getElementById(imgId).src = URL.createObjectURL(file);
@@ -1111,6 +1257,7 @@ async function importHistory() {
     n++;
   }
   renderAll();
+  scheduleMuseSync(0);
   alert(n ? `Imported history into ${n} day(s).` : 'Already imported — nothing new.');
 }
 </script>
