@@ -139,6 +139,10 @@
   <h1 style="font-size:28px;">💪 Paretti Fitness</h1>
   <p>Track meals, workouts, weight & progress</p>
   <button onclick="login()">Sign in with Google</button>
+  <p id="loginMsg" style="font-size:13px;opacity:0.8;max-width:300px;text-align:center;"></p>
+  <p id="browserHint" class="hidden" style="font-size:13px;color:#ffcc80;max-width:300px;text-align:center;">
+    You're in an in-app browser (Outlook/Edge). Google sign-in often won't open here — copy this link and open it in <b>Safari</b>.
+  </p>
 </div>
 
 <div id="app" class="hidden">
@@ -320,6 +324,10 @@ const firebaseConfig = {
   messagingSenderId: "223952420470",
   appId: "1:223952420470:web:eb90e4d63bdc572c1c6957"
 };
+if (typeof firebase === 'undefined') {
+  window.login = () => { document.getElementById('loginMsg').textContent = "Couldn't load Google sign-in. Check your connection and reload the page."; };
+  throw new Error('Firebase SDK failed to load');
+}
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
@@ -424,14 +432,29 @@ function plannedSets(type, ex, k) {
 }
 
 // ===== AUTH =====
+function loginMsg(t) { document.getElementById('loginMsg').textContent = t; }
+
+// Edge, Chrome, Outlook etc. on iPhone often can't finish Google's pop-up
+if (/EdgiOS|CriOS|FxiOS|Outlook|FBAN|FBAV|Instagram|GSA\//.test(navigator.userAgent)) {
+  document.getElementById('browserHint').classList.remove('hidden');
+}
+
+auth.getRedirectResult().catch(e => loginMsg(`Sign-in failed: ${e.code || e.message}`));
+
 function login() {
+  loginMsg('Opening Google sign-in…');
   const provider = new firebase.auth.GoogleAuthProvider();
+  const slow = setTimeout(() => loginMsg('Still waiting on Google. If no sign-in window opened, open this page in Safari and try again.'), 8000);
   // Home-screen (standalone) mode can block popups; fall back to a redirect
-  auth.signInWithPopup(provider).catch(e => {
+  auth.signInWithPopup(provider).then(() => clearTimeout(slow)).catch(e => {
+    clearTimeout(slow);
     if (['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/cancelled-popup-request'].includes(e.code)) {
+      loginMsg('Pop-up blocked — redirecting to Google…');
       return auth.signInWithRedirect(provider);
     }
-    alert(e.message);
+    if (e.code === 'auth/popup-closed-by-user') return loginMsg('Sign-in window closed. Tap the button to try again.');
+    if (e.code === 'auth/unauthorized-domain') return loginMsg('This web address isn\'t allowed in Firebase yet: add ' + location.hostname + ' under Authentication → Settings → Authorized domains.');
+    loginMsg(`Sign-in failed: ${e.code || e.message}`);
   });
 }
 function logout() { auth.signOut(); }
